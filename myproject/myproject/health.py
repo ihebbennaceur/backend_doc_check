@@ -1,6 +1,50 @@
 from django.http import JsonResponse
+from django.urls import get_resolver
 from rest_framework.decorators import api_view
 from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+@api_view(['GET'])
+def api_root(request):
+    """Root API endpoint that lists all available endpoints."""
+    return JsonResponse({
+        'service': 'Seller Platform Backend API',
+        'version': '1.0.0',
+        'status': 'running',
+        'documentation': {
+            'swagger_ui': 'https://backenddoccheck-production.up.railway.app/api/docs/',
+            'redoc': 'https://backenddoccheck-production.up.railway.app/api/redoc/',
+            'openapi_schema': 'https://backenddoccheck-production.up.railway.app/api/schema/'
+        },
+        'endpoints': {
+            'authentication': {
+                'obtain_token': '/api/token/',
+                'refresh_token': '/api/token/refresh/'
+            },
+            'accounts': {
+                'users': '/api/user/',
+                'profile': '/api/accounts/'
+            },
+            'documents': {
+                'list': '/api/documents/',
+                'upload': '/api/documents/upload/'
+            },
+            'verification': {
+                'doccheck': '/api/doccheck/'
+            },
+            'orders': {
+                'orders': '/api/orders/'
+            },
+            'payments': {
+                'payments': '/api/payments/'
+            },
+            'admin_panel': '/admin/'
+        },
+        'health': {
+            'health_check': '/health/',
+            'ready_check': '/ready/'
+        }
+    })
 
 @csrf_exempt
 @api_view(['GET'])

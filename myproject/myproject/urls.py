@@ -19,10 +19,10 @@ from django.urls import path, include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from django.http import HttpResponse
-from myproject.health import health_check, ready_check
+from myproject.health import health_check, ready_check, api_root
 
 urlpatterns = [
-    path("", lambda request: HttpResponse("Welcome to the Seller Platform API!")),
+    path("", api_root, name='api-root'),
     path('health/', health_check, name='health'),
     path('ready/', ready_check, name='ready'),
     path('admin/', admin.site.urls),
