@@ -54,7 +54,9 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:8080',
+    'https://docfrontend-beta.vercel.app',  # Frontend production
 ]
+CORS_ALLOW_ORIGINS_REGEX = r'^https://.*\.vercel\.app$'
 CORS_ALLOW_METHODS = [
     'GET',
     'POST',
