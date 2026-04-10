@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Make init script executable
+RUN chmod +x init.sh
+
 # Create necessary directories
 RUN mkdir -p staticfiles media
 
