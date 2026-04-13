@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     'jazzmin',
     'corsheaders',
     'rest_framework',
+    'rest_framework.authtoken',
     'drf_spectacular',
     'rest_framework_simplejwt',
     'storages',
