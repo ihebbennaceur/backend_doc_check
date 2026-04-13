@@ -439,16 +439,24 @@ class GoogleAuthView(CreateAPIView):
                     )
                 
                 # Get or create user
-                user, created = User.objects.get_or_create(
-                    email=email.lower(),
-                    defaults={
-                        'username': email.split('@')[0].lower(),
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'is_active': True,
-                        'role': User.Role.SELLER  # Default role
-                    }
-                )
+                try:
+                    user, created = User.objects.get_or_create(
+                        email=email.lower(),
+                        defaults={
+                            'username': email.split('@')[0].lower(),
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'is_active': True,
+                            'role': User.Role.SELLER  # Default role
+                        }
+                    )
+                except Exception as db_error:
+                    # Database error - don't expose details to user
+                    logger.error(f"Database error creating user: {str(db_error)}")
+                    return Response(
+                        {'error': 'An error occurred while creating your account. Please try again later.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
                 
                 # Generate JWT tokens
                 refresh = RefreshToken.for_user(user)
@@ -477,7 +485,8 @@ class GoogleAuthView(CreateAPIView):
                 
         except Exception as e:
             logger.error(f"Google auth error: {str(e)}")
+            # Don't expose internal error details to user
             return Response(
-                {'error': str(e)},
+                {'error': 'An error occurred during authentication. Please try again.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
