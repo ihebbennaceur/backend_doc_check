@@ -8,8 +8,19 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 import json
 import logging
+import os
+
+# Google OAuth imports
+try:
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token
+except ImportError:
+    google_requests = None
+    id_token = None
+
 from .models import User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile
 from .serializers import (
     RegisterSerializer,
@@ -402,23 +413,26 @@ class GoogleAuthView(CreateAPIView):
     
     def create(self, request, *args, **kwargs):
         try:
+            # Check if Google auth packages are available
+            if not google_requests or not id_token:
+                logger.error("Google auth packages not installed (google.auth, google.oauth2)")
+                return Response(
+                    {'error': 'Google authentication is not properly configured on the server'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             
             google_token = serializer.validated_data['access_token']
             
-            # Verify the token with Google
-            from google.auth.transport import requests as google_requests
-            from google.oauth2 import id_token
-            import os
-            
             # Get the client ID from environment variable or settings
-            from django.conf import settings
-            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID') or settings.SOCIALACCOUNT_PROVIDERS.get('google', {}).get('APP', {}).get('client_id')
+            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
             
             if not client_id:
+                logger.error("GOOGLE_OAUTH_CLIENT_ID not configured in environment")
                 return Response(
-                    {'error': 'Google OAuth not properly configured'},
+                    {'error': 'Google OAuth client ID not configured on server'},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
             
@@ -443,7 +457,7 @@ class GoogleAuthView(CreateAPIView):
                     user, created = User.objects.get_or_create(
                         email=email.lower(),
                         defaults={
-                            'username': email.split('@')[0].lower(),
+                            'username': email.lower(),  # Use full email as username to ensure uniqueness
                             'first_name': first_name,
                             'last_name': last_name,
                             'is_active': True,
@@ -479,12 +493,18 @@ class GoogleAuthView(CreateAPIView):
                 # Invalid token
                 logger.error(f"Invalid Google token: {str(e)}")
                 return Response(
-                    {'error': 'Invalid Google token'},
+                    {'error': 'Invalid or expired Google token. Please try logging in again.'},
                     status=status.HTTP_401_UNAUTHORIZED
+                )
+            except Exception as token_error:
+                logger.error(f"Token verification error: {str(token_error)}")
+                return Response(
+                    {'error': 'Failed to verify Google token. Please try again.'},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
                 
         except Exception as e:
-            logger.error(f"Google auth error: {str(e)}")
+            logger.error(f"Google auth error: {str(e)}", exc_info=True)
             # Don't expose internal error details to user
             return Response(
                 {'error': 'An error occurred during authentication. Please try again.'},
