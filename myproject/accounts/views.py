@@ -464,9 +464,10 @@ class GoogleAuthView(CreateAPIView):
                             'role': User.Role.SELLER  # Default role
                         }
                     )
+                    logger.info(f"User {'created' if created else 'retrieved'}: {email}")
                 except Exception as db_error:
-                    # Database error - don't expose details to user
-                    logger.error(f"Database error creating user: {str(db_error)}")
+                    # Database error - log with full traceback
+                    logger.error(f"Database error creating user for {email}: {str(db_error)}", exc_info=True)
                     return Response(
                         {'error': 'An error occurred while creating your account. Please try again later.'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR
