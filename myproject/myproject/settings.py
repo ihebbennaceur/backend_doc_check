@@ -155,11 +155,11 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-# Support both SQLite (development) and PostgreSQL (production via DATABASE_URL)
+# Support both SQLite (development) and PostgreSQL (production)
 
-if os.getenv('DATABASE_URL'):
+# Try to use DATABASE_URL first, then fall back to individual env vars
+if os.getenv('DATABASE_URL') and os.getenv('DATABASE_URL') != '://':
     # Production: Use PostgreSQL with DATABASE_URL (Supabase)
-    # Remove ?sslmode=require from URL if present, will add in OPTIONS instead
     db_url = os.getenv('DATABASE_URL').split('?')[0]  # Remove query params
     DATABASES = {
         'default': dj_database_url.config(
@@ -171,6 +171,22 @@ if os.getenv('DATABASE_URL'):
     if not DATABASES['default'].get('OPTIONS'):
         DATABASES['default']['OPTIONS'] = {}
     DATABASES['default']['OPTIONS']['sslmode'] = 'require'
+elif os.getenv('DB_HOST'):
+    # Production: Use individual environment variables
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'postgres'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': 'require',
+            },
+            'CONN_MAX_AGE': 600,
+        }
+    }
 else:
     # Development: Use SQLite
     DATABASES = {
