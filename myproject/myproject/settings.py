@@ -54,7 +54,9 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:8080',
+    'http://localhost:8000',
     'https://docfrontend-beta.vercel.app',  # Frontend production
+    'https://doc-frontend-beta.vercel.app',  # Alternative
 ]
 CORS_ALLOW_ORIGINS_REGEX = r'^https://.*\.vercel\.app$'
 CORS_ALLOW_METHODS = [
@@ -64,12 +66,29 @@ CORS_ALLOW_METHODS = [
     'PATCH',
     'DELETE',
     'OPTIONS',
+    'HEAD',
 ]
 CORS_ALLOW_HEADERS = [
     'Content-Type',
     'Authorization',
     'X-Requested-With',
+    'Accept',
+    'Origin',
 ]
+CORS_EXPOSE_HEADERS = [
+    'Content-Type',
+    'Authorization',
+]
+
+# CSRF Configuration
+CSRF_TRUSTED_ORIGINS = [
+    'https://docfrontend-beta.vercel.app',
+    'https://doc-frontend-beta.vercel.app',
+    'https://*.vercel.app',
+]
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = False  # Allow JS to read it
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Application definition
 
