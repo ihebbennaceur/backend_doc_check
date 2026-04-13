@@ -13,3 +13,10 @@ dj-database-url
 boto3
 django-storages
 whitenoise
+dj-rest-auth
+django-allauth
+google-auth-oauthlib
+google-auth
+PyJWT
+cryptography
+

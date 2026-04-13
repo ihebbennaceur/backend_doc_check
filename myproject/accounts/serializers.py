@@ -228,3 +228,21 @@ class BuyerProfileSerializer(serializers.ModelSerializer):
             "nationality",
             "financing_type"
         ]
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    """Serializer for Google OAuth token exchange"""
+    access_token = serializers.CharField(required=True, write_only=True)
+    
+    def validate_access_token(self, value):
+        """Validate the Google access token"""
+        if not value:
+            raise serializers.ValidationError("Access token is required")
+        return value
+
+    def create(self, validated_data):
+        """
+        Exchange Google token for user and JWT tokens.
+        This will be handled in the view.
+        """
+        return validated_data

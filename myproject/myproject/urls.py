@@ -35,6 +35,13 @@ urlpatterns = [
     # JWT Token endpoints
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # dj-rest-auth endpoints (includes login, logout, password change)
+    path('api/auth/', include('dj_rest_auth.urls')),
+    path('api/auth/registration/', include('dj_rest_auth.registration.urls')),
+    
+    # Allauth endpoints (for social auth)
+    path('api/accounts/', include('allauth.urls')),
   
     # Accounts API (User Profile, Auth, Documents)
     path("api/", include("accounts.urls")),

@@ -12,6 +12,7 @@ from .views import (
     UserDocumentsView,
     AdminDocumentListView,
     AdminDocumentApprovalView,
+    GoogleAuthView,
     seller_profile,
     agent_profile,
     lawyer_profile,
@@ -22,6 +23,7 @@ urlpatterns = [
     # Auth endpoints
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
+    path("auth/google/", GoogleAuthView.as_view(), name="google_auth"),
     path("profile/", UserUpdateView.as_view(), name="profile"),
     
     # Email verification

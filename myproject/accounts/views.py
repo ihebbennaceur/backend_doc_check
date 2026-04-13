@@ -23,7 +23,8 @@ from .serializers import (
     SellerProfileSerializer,
     AgentProfileSerializer,
     LawyerProfileSerializer,
-    BuyerProfileSerializer
+    BuyerProfileSerializer,
+    GoogleAuthSerializer
 )
 
 logger = logging.getLogger(__name__)
@@ -386,4 +387,96 @@ class DocumentExtractionView(UpdateAPIView):
             return Response(
                 {'error': f'Extraction failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GoogleAuthView(CreateAPIView):
+    """
+    Handle Google OAuth authentication
+    Receives Google access token and returns JWT tokens
+    POST /api/auth/google/
+    """
+    serializer_class = GoogleAuthSerializer
+    permission_classes = []
+    authentication_classes = []
+    
+    def create(self, request, *args, **kwargs):
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            google_token = serializer.validated_data['access_token']
+            
+            # Verify the token with Google
+            from google.auth.transport import requests as google_requests
+            from google.oauth2 import id_token
+            
+            # Get the client ID from settings
+            from django.conf import settings
+            client_id = settings.SOCIALACCOUNT_PROVIDERS['google']['APP'].get('client_id')
+            
+            if not client_id:
+                return Response(
+                    {'error': 'Google OAuth not properly configured'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Verify the token
+            try:
+                idinfo = id_token.verify_oauth2_token(google_token, google_requests.Request(), client_id)
+                
+                # Token is valid, extract user info
+                email = idinfo.get('email')
+                first_name = idinfo.get('given_name', '')
+                last_name = idinfo.get('family_name', '')
+                picture_url = idinfo.get('picture', '')
+                
+                if not email:
+                    return Response(
+                        {'error': 'Email not provided in Google token'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Get or create user
+                user, created = User.objects.get_or_create(
+                    email=email.lower(),
+                    defaults={
+                        'username': email.split('@')[0].lower(),
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'is_active': True,
+                        'role': User.Role.SELLER  # Default role
+                    }
+                )
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                
+                return Response({
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                    'user': {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'role': user.role
+                    },
+                    'is_new': created
+                }, status=status.HTTP_200_OK)
+                
+            except ValueError as e:
+                # Invalid token
+                logger.error(f"Invalid Google token: {str(e)}")
+                return Response(
+                    {'error': 'Invalid Google token'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+                
+        except Exception as e:
+            logger.error(f"Google auth error: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
             )
