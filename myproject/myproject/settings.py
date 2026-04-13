@@ -220,6 +220,12 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ) if not DEBUG else (
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ),
 }
 
 # Spectacular/Swagger Configuration
@@ -228,6 +234,7 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'A comprehensive seller-focused real estate platform backend API with document processing, payments, and CMA analysis',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAdminUser'] if not DEBUG else [],
     'CONTACT': {
         'name': 'API Support',
         'email': 'support@sellerplatform.com',
