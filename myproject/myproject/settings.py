@@ -152,33 +152,18 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 
 if os.getenv('DATABASE_URL'):
     # Production: Use PostgreSQL with DATABASE_URL (Supabase)
-    try:
-        DATABASES = {
-            'default': dj_database_url.config(
-                default=os.getenv('DATABASE_URL'),
-                conn_max_age=600,
-                ssl_require=True,
-            )
-        }
-    except Exception:
-        # If dj_database_url fails, parse manually
-        import urllib.parse
-        db_url = os.getenv('DATABASE_URL')
-        parsed = urllib.parse.urlparse(db_url)
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': parsed.path.lstrip('/'),
-                'USER': parsed.username,
-                'PASSWORD': parsed.password,
-                'HOST': parsed.hostname,
-                'PORT': parsed.port or 5432,
-                'CONN_MAX_AGE': 600,
-                'OPTIONS': {
-                    'sslmode': 'require',
-                }
-            }
-        }
+    # Remove ?sslmode=require from URL if present, will add in OPTIONS instead
+    db_url = os.getenv('DATABASE_URL').split('?')[0]  # Remove query params
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=db_url,
+            conn_max_age=600,
+        )
+    }
+    # Add SSL requirement
+    if not DATABASES['default'].get('OPTIONS'):
+        DATABASES['default']['OPTIONS'] = {}
+    DATABASES['default']['OPTIONS']['sslmode'] = 'require'
 else:
     # Development: Use SQLite
     DATABASES = {
