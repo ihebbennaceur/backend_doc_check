@@ -410,10 +410,11 @@ class GoogleAuthView(CreateAPIView):
             # Verify the token with Google
             from google.auth.transport import requests as google_requests
             from google.oauth2 import id_token
+            import os
             
-            # Get the client ID from settings
+            # Get the client ID from environment variable or settings
             from django.conf import settings
-            client_id = settings.SOCIALACCOUNT_PROVIDERS['google']['APP'].get('client_id')
+            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID') or settings.SOCIALACCOUNT_PROVIDERS.get('google', {}).get('APP', {}).get('client_id')
             
             if not client_id:
                 return Response(
