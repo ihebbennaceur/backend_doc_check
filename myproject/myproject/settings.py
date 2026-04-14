@@ -162,17 +162,21 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 # Try to use DATABASE_URL first, then fall back to individual env vars
 if os.getenv('DATABASE_URL') and os.getenv('DATABASE_URL') != '://':
     # Production: Use PostgreSQL with DATABASE_URL (Supabase)
-    db_url = os.getenv('DATABASE_URL').split('?')[0]  # Remove query params
+    db_url = os.getenv('DATABASE_URL')
+    
+    # Add sslmode if not already in URL
+    if '?sslmode=' not in db_url:
+        db_url = f"{db_url}?sslmode=require"
+    elif '?sslmode=require' not in db_url:
+        # If it has sslmode but it's not 'require', replace it
+        db_url = db_url.replace('?sslmode=', '?sslmode=require')
+    
     DATABASES = {
         'default': dj_database_url.config(
             default=db_url,
             conn_max_age=600,
         )
     }
-    # Add SSL requirement
-    if not DATABASES['default'].get('OPTIONS'):
-        DATABASES['default']['OPTIONS'] = {}
-    DATABASES['default']['OPTIONS']['sslmode'] = 'require'
 elif os.getenv('DB_HOST'):
     # Production: Use individual environment variables
     DATABASES = {
