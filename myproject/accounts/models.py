@@ -208,6 +208,31 @@ class BuyerProfile(models.Model):
 
 
 ########################################################################
+# Property Listings for Sellers
+
+class Property(models.Model):
+    """Property listing for sale"""
+    
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="properties")
+    
+    title = models.CharField(max_length=200)  # e.g., "3 Bedroom House - Brooklyn"
+    address = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    
+    image = models.ImageField(upload_to="properties/%Y/%m/", null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.seller.username} - {self.title}"
+
+
+########################################################################
 # Generic Document Requirements for House Sale
 
 class PropertyDocumentTemplate(models.Model):
@@ -237,7 +262,7 @@ class PropertyDocumentTemplate(models.Model):
 
 
 class SellerDocumentSubmission(models.Model):
-    """User's submission for a specific document template"""
+    """User's submission for a specific document template for a property"""
     
     class SubmissionStatus(models.TextChoices):
         NOT_SUBMITTED = "not_submitted"
@@ -247,6 +272,7 @@ class SellerDocumentSubmission(models.Model):
         NEEDS_REVISION = "needs_revision"
     
     seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="document_submissions")
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="document_submissions")
     template = models.ForeignKey(PropertyDocumentTemplate, on_delete=models.CASCADE, related_name="submissions")
     
     status = models.CharField(
@@ -266,7 +292,7 @@ class SellerDocumentSubmission(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
-        unique_together = ('seller', 'template')
+        unique_together = ('property', 'template')
         ordering = ['template__order', '-submitted_at']
     
     def __str__(self):
@@ -291,12 +317,13 @@ def create_user_profile(sender, instance, created, **kwargs):
 
 
 def _create_seller_document_submissions(user):
-    """Create document submissions for a seller using all templates"""
+    """Create document submissions for a seller using all templates
+    
+    Note: Document submissions are now property-specific.
+    They will be created when properties are created or documents are uploaded.
+    """
     if user.role != User.Role.SELLER:
         return
     
-    for template in PropertyDocumentTemplate.objects.all():
-        SellerDocumentSubmission.objects.get_or_create(
-            seller=user,
-            template=template
-        )
+    # No longer auto-creating submissions here since they're property-specific
+    pass

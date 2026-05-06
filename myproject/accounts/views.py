@@ -12,7 +12,7 @@ import json
 import logging
 from .models import (
     User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile,
-    PropertyDocumentTemplate, SellerDocumentSubmission
+    Property, PropertyDocumentTemplate, SellerDocumentSubmission
 )
 from .serializers import (
     RegisterSerializer,
@@ -28,6 +28,8 @@ from .serializers import (
     AgentProfileSerializer,
     LawyerProfileSerializer,
     BuyerProfileSerializer,
+    PropertySerializer,
+    PropertyDetailSerializer,
     PropertyDocumentTemplateSerializer,
     SellerDocumentSubmissionListSerializer,
     SellerDocumentSubmissionDetailSerializer
@@ -652,3 +654,82 @@ def admin_review_document(request, submission_id):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+########################################################################
+# PROPERTY MANAGEMENT VIEWS
+
+class PropertyListView(ListAPIView):
+    """List seller's properties and create new property"""
+    serializer_class = PropertySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Only show properties for authenticated seller"""
+        if self.request.user.role != User.Role.SELLER:
+            return Property.objects.none()
+        return Property.objects.filter(seller=self.request.user)
+    
+    def post(self, request, *args, **kwargs):
+        """Create new property for seller"""
+        if request.user.role != User.Role.SELLER:
+            raise PermissionDenied("Only sellers can create properties")
+        
+        # Add seller to request data
+        data = request.data.copy()
+        data['seller'] = request.user.id
+        
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(seller=request.user)
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PropertyDetailView(RetrieveUpdateAPIView):
+    """Get, update property details"""
+    serializer_class = PropertyDetailSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        """Only show property if user is the seller"""
+        user = self.request.user
+        if user.role == User.Role.SELLER:
+            return Property.objects.filter(seller=user)
+        elif user.role == User.Role.ADMIN:
+            return Property.objects.all()
+        return Property.objects.none()
+    
+    def get_object(self):
+        """Get property by id"""
+        queryset = self.get_queryset()
+        obj = get_object_or_404(queryset, id=self.kwargs['id'])
+        self.check_object_permissions(self.request, obj)
+        return obj
+    
+    def put(self, request, *args, **kwargs):
+        """Update property - sellers can only update their own"""
+        property_obj = self.get_object()
+        
+        if property_obj.seller != request.user and request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("You can only update your own properties")
+        
+        serializer = self.get_serializer(property_obj, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def patch(self, request, *args, **kwargs):
+        """Partial update property"""
+        property_obj = self.get_object()
+        
+        if property_obj.seller != request.user and request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("You can only update your own properties")
+        
+        serializer = self.get_serializer(property_obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)

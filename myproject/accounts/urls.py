@@ -19,6 +19,8 @@ from .views import (
     agent_profile,
     lawyer_profile,
     buyer_profile,
+    PropertyListView,
+    PropertyDetailView,
     PropertyDocumentTemplateListView,
     AdminPropertyDocumentsListView,
     SellerDocumentSubmissionListView,
@@ -56,6 +58,10 @@ urlpatterns = [
     path("profiles/agent/", agent_profile, name="agent_profile"),
     path("profiles/lawyer/", lawyer_profile, name="lawyer_profile"),
     path("profiles/buyer/", buyer_profile, name="buyer_profile"),
+    
+    # Property management (seller)
+    path("properties/", PropertyListView.as_view(), name="properties_list"),
+    path("properties/<int:id>/", PropertyDetailView.as_view(), name="property_detail"),
     
     # Admin endpoints
     path("admin/users/", AdminUserListView.as_view(), name="admin_users_list"),

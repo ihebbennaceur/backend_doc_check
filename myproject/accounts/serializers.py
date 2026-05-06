@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile
+from .models import User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile, Property, PropertyDocumentTemplate, SellerDocumentSubmission
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -337,3 +337,91 @@ class SellerDocumentSubmissionDetailSerializer(serializers.ModelSerializer):
             'reviewed_at'
         ]
         read_only_fields = ['extracted_data', 'missing_fields', 'reviewer_notes', 'reviewer', 'reviewer_username', 'reviewed_at']
+
+
+class PropertySerializer(serializers.ModelSerializer):
+    """Serializer for Property model - listing and creating properties"""
+    seller_username = serializers.CharField(source='seller.username', read_only=True)
+    document_submissions_count = serializers.SerializerMethodField()
+    completed_documents_count = serializers.SerializerMethodField()
+    total_required_documents = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'seller',
+            'seller_username',
+            'title',
+            'description',
+            'address',
+            'city',
+            'postal_code',
+            'price',
+            'area_sqm',
+            'bedrooms',
+            'bathrooms',
+            'status',
+            'document_submissions_count',
+            'completed_documents_count',
+            'total_required_documents',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'seller', 'seller_username', 'created_at', 'updated_at']
+    
+    def get_document_submissions_count(self, obj):
+        """Count of document submissions for this property"""
+        return obj.document_submissions.count()
+    
+    def get_completed_documents_count(self, obj):
+        """Count of approved documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()
+    
+    def get_total_required_documents(self, obj):
+        """Count of required document templates"""
+        return PropertyDocumentTemplate.objects.filter(required=True).count()
+
+
+class PropertyDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for Property with document submissions"""
+    seller_username = serializers.CharField(source='seller.username', read_only=True)
+    document_submissions = SellerDocumentSubmissionListSerializer(many=True, read_only=True)
+    document_submissions_count = serializers.SerializerMethodField()
+    completed_documents_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'seller',
+            'seller_username',
+            'title',
+            'description',
+            'address',
+            'city',
+            'postal_code',
+            'price',
+            'area_sqm',
+            'bedrooms',
+            'bathrooms',
+            'status',
+            'document_submissions',
+            'document_submissions_count',
+            'completed_documents_count',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'seller', 'seller_username', 'created_at', 'updated_at', 'document_submissions']
+    
+    def get_document_submissions_count(self, obj):
+        """Count of document submissions for this property"""
+        return obj.document_submissions.count()
+    
+    def get_completed_documents_count(self, obj):
+        """Count of approved documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()
