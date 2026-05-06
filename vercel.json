@@ -1,0 +1,31 @@
+{
+  "buildCommand": "pip install -r requirements.txt",
+  "outputDirectory": ".",
+  "framework": "django",
+  "env": {
+    "DJANGO_SETTINGS_MODULE": "myproject.settings"
+  },
+  "functions": {
+    "myproject/wsgi.py": {
+      "memory": 3008,
+      "maxDuration": 60
+    }
+  },
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1",
+      "headers": {
+        "cache-control": "public, max-age=3600"
+      }
+    },
+    {
+      "src": "/media/(.*)",
+      "dest": "/media/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/myproject/wsgi.py"
+    }
+  ]
+}

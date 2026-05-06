@@ -111,6 +111,46 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
+class UserDetailSerializer(serializers.ModelSerializer):
+    """Serializer for user profile details with all fields"""
+    full_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "full_name",
+            "phone",
+            "role",
+            "email_verified",
+            "created_at",
+            "updated_at"
+        ]
+        read_only_fields = ["id", "username", "role", "email_verified", "created_at", "updated_at"]
+    
+    def get_full_name(self, obj):
+        """Return full name or N/A if empty"""
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name}"
+        elif obj.first_name:
+            return obj.first_name
+        elif obj.last_name:
+            return obj.last_name
+        return None
+    
+    def update(self, instance, validated_data):
+        instance.email = validated_data.get('email', instance.email)
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.phone = validated_data.get('phone', instance.phone)
+        instance.save()
+        return instance
+
+
 class AdminUserManagementSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -230,19 +270,70 @@ class BuyerProfileSerializer(serializers.ModelSerializer):
         ]
 
 
-class GoogleAuthSerializer(serializers.Serializer):
-    """Serializer for Google OAuth token exchange"""
-    access_token = serializers.CharField(required=True, write_only=True)
-    
-    def validate_access_token(self, value):
-        """Validate the Google access token"""
-        if not value:
-            raise serializers.ValidationError("Access token is required")
-        return value
+# Document Template and Submission Serializers
 
-    def create(self, validated_data):
-        """
-        Exchange Google token for user and JWT tokens.
-        This will be handled in the view.
-        """
-        return validated_data
+class PropertyDocumentTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import PropertyDocumentTemplate
+        model = PropertyDocumentTemplate
+        fields = [
+            'id',
+            'name',
+            'description',
+            'category',
+            'required',
+            'required_fields',
+            'order'
+        ]
+
+
+class SellerDocumentSubmissionListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing submissions"""
+    template_name = serializers.CharField(source='template.name', read_only=True)
+    template_description = serializers.CharField(source='template.description', read_only=True)
+    template_category = serializers.CharField(source='template.category', read_only=True)
+    template_required_fields = serializers.ListField(source='template.required_fields', read_only=True)
+    
+    class Meta:
+        from .models import SellerDocumentSubmission
+        model = SellerDocumentSubmission
+        fields = [
+            'id',
+            'template',
+            'template_name',
+            'template_description',
+            'template_category',
+            'template_required_fields',
+            'status',
+            'extracted_data',
+            'missing_fields',
+            'reviewer_notes',
+            'submitted_at',
+            'reviewed_at'
+        ]
+        read_only_fields = ['extracted_data', 'missing_fields', 'reviewer_notes', 'reviewed_at']
+
+
+class SellerDocumentSubmissionDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for viewing/uploading submissions"""
+    template_data = PropertyDocumentTemplateSerializer(source='template', read_only=True)
+    reviewer_username = serializers.CharField(source='reviewer.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        from .models import SellerDocumentSubmission
+        model = SellerDocumentSubmission
+        fields = [
+            'id',
+            'template',
+            'template_data',
+            'status',
+            'file',
+            'extracted_data',
+            'missing_fields',
+            'reviewer_notes',
+            'reviewer',
+            'reviewer_username',
+            'submitted_at',
+            'reviewed_at'
+        ]
+        read_only_fields = ['extracted_data', 'missing_fields', 'reviewer_notes', 'reviewer', 'reviewer_username', 'reviewed_at']

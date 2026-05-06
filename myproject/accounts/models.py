@@ -132,6 +132,8 @@ class Document(models.Model):
 
     extracted_fields = models.JSONField(default=dict, blank=True, null=True)
 
+    analysis_result = models.JSONField(default=dict, blank=True, null=True)  # AI analysis results (text extraction, type detection, etc)
+
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     reviewed_at = models.DateTimeField(blank=True, null=True)
@@ -206,16 +208,95 @@ class BuyerProfile(models.Model):
 
 
 ########################################################################
-# Signals to auto-create role-specific profiles
+# Generic Document Requirements for House Sale
+
+class PropertyDocumentTemplate(models.Model):
+    """Generic documents required for selling a house"""
+    
+    class DocumentCategory(models.TextChoices):
+        PROPERTY = "property"  # Property documents
+        LEGAL = "legal"  # Legal documents
+        FINANCIAL = "financial"  # Financial documents
+        INSPECTION = "inspection"  # Inspection documents
+        TAX = "tax"  # Tax documents
+    
+    name = models.CharField(max_length=100, unique=True)  # e.g., "Property Deed"
+    description = models.TextField()  # e.g., "Proof of ownership of the property"
+    category = models.CharField(max_length=20, choices=DocumentCategory.choices, default=DocumentCategory.PROPERTY)
+    required = models.BooleanField(default=True)  # Is this document mandatory?
+    required_fields = models.JSONField(default=list)  # e.g., ["owner_name", "property_address", "deed_date"]
+    
+    order = models.IntegerField(default=0)  # Display order
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['order', 'name']
+    
+    def __str__(self):
+        return f"{self.name} ({self.category})"
+
+
+class SellerDocumentSubmission(models.Model):
+    """User's submission for a specific document template"""
+    
+    class SubmissionStatus(models.TextChoices):
+        NOT_SUBMITTED = "not_submitted"
+        PENDING_REVIEW = "pending_review"
+        APPROVED = "approved"
+        REJECTED = "rejected"
+        NEEDS_REVISION = "needs_revision"
+    
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name="document_submissions")
+    template = models.ForeignKey(PropertyDocumentTemplate, on_delete=models.CASCADE, related_name="submissions")
+    
+    status = models.CharField(
+        max_length=20,
+        choices=SubmissionStatus.choices,
+        default=SubmissionStatus.NOT_SUBMITTED
+    )
+    
+    file = models.FileField(upload_to="seller_documents/%Y/%m/%d/", null=True, blank=True)
+    extracted_data = models.JSONField(default=dict, blank=True)  # Data extracted from file
+    missing_fields = models.JSONField(default=list, blank=True)  # Required fields that are missing
+    
+    reviewer_notes = models.TextField(blank=True)  # Notes from manual review
+    reviewer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_submissions")
+    
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        unique_together = ('seller', 'template')
+        ordering = ['template__order', '-submitted_at']
+    
+    def __str__(self):
+        return f"{self.seller.username} - {self.template.name} ({self.status})"
+
+
+########################################################################
 
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     """Automatically create role-specific profile when user is created or role changes"""
     if instance.role == User.Role.SELLER:
         SellerProfile.objects.get_or_create(user=instance, defaults={'seller_type': 'individual'})
+        # Create default document submissions for seller
+        _create_seller_document_submissions(instance)
     elif instance.role == User.Role.AGENT:
         AgentProfile.objects.get_or_create(user=instance, defaults={'ami_license_number': '', 'languages': []})
     elif instance.role == User.Role.LAWYER:
         LawyerProfile.objects.get_or_create(user=instance, defaults={'registration_number': '', 'specialization': ''})
     elif instance.role == User.Role.BUYER:
         BuyerProfile.objects.get_or_create(user=instance, defaults={'nationality': '', 'financing_type': ''})
+
+
+def _create_seller_document_submissions(user):
+    """Create document submissions for a seller using all templates"""
+    if user.role != User.Role.SELLER:
+        return
+    
+    for template in PropertyDocumentTemplate.objects.all():
+        SellerDocumentSubmission.objects.get_or_create(
+            seller=user,
+            template=template
+        )

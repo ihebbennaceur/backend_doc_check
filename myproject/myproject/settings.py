@@ -54,9 +54,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:8080',
-    'http://localhost:8000',
     'https://docfrontend-beta.vercel.app',  # Frontend production
-    'https://doc-frontend-beta.vercel.app',  # Alternative
 ]
 CORS_ALLOW_ORIGINS_REGEX = r'^https://.*\.vercel\.app$'
 CORS_ALLOW_METHODS = [
@@ -66,29 +64,12 @@ CORS_ALLOW_METHODS = [
     'PATCH',
     'DELETE',
     'OPTIONS',
-    'HEAD',
 ]
 CORS_ALLOW_HEADERS = [
     'Content-Type',
     'Authorization',
     'X-Requested-With',
-    'Accept',
-    'Origin',
 ]
-CORS_EXPOSE_HEADERS = [
-    'Content-Type',
-    'Authorization',
-]
-
-# CSRF Configuration
-CSRF_TRUSTED_ORIGINS = [
-    'https://docfrontend-beta.vercel.app',
-    'https://doc-frontend-beta.vercel.app',
-    'https://*.vercel.app',
-]
-CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_HTTPONLY = False  # Allow JS to read it
-CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Application definition
 
@@ -96,23 +77,15 @@ INSTALLED_APPS = [
     'jazzmin',
     'corsheaders',
     'rest_framework',
-    'rest_framework.authtoken',
     'drf_spectacular',
     'rest_framework_simplejwt',
     'storages',
-    'django.contrib.sites',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'dj_rest_auth',
-    'dj_rest_auth.registration',
     'accounts',
     'modules.doccheck',
     'modules.documents',
@@ -130,7 +103,6 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -157,41 +129,15 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-# Support both SQLite (development) and PostgreSQL (production)
+# Support both SQLite (development) and PostgreSQL (production via DATABASE_URL)
 
-# Try to use DATABASE_URL first, then fall back to individual env vars
-if os.getenv('DATABASE_URL') and os.getenv('DATABASE_URL') != '://':
+if os.getenv('DATABASE_URL'):
     # Production: Use PostgreSQL with DATABASE_URL (Supabase)
-    db_url = os.getenv('DATABASE_URL')
-    
-    # Add sslmode if not already in URL
-    if '?sslmode=' not in db_url:
-        db_url = f"{db_url}?sslmode=require"
-    elif '?sslmode=require' not in db_url:
-        # If it has sslmode but it's not 'require', replace it
-        db_url = db_url.replace('?sslmode=', '?sslmode=require')
-    
     DATABASES = {
         'default': dj_database_url.config(
-            default=db_url,
-            conn_max_age=600,
+            default=os.getenv('DATABASE_URL'),
+            conn_max_age=600
         )
-    }
-elif os.getenv('DB_HOST'):
-    # Production: Use individual environment variables
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'postgres'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST'),
-            'PORT': os.getenv('DB_PORT', '5432'),
-            'OPTIONS': {
-                'sslmode': 'require',
-            },
-            'CONN_MAX_AGE': 600,
-        }
     }
 else:
     # Development: Use SQLite
@@ -255,12 +201,6 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
     ],
-    'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
-    ) if not DEBUG else (
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ),
 }
 
 # Spectacular/Swagger Configuration
@@ -269,7 +209,6 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'A comprehensive seller-focused real estate platform backend API with document processing, payments, and CMA analysis',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAdminUser'] if not DEBUG else [],
     'CONTACT': {
         'name': 'API Support',
         'email': 'support@sellerplatform.com',
@@ -366,60 +305,12 @@ else:
     # Use local storage for development
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
-
-# Django Sites Framework Configuration
-SITE_ID = 1
-
-# Django-allauth Configuration
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = 'optional'
-ACCOUNT_USERNAME_REQUIRED = False
-SOCIALACCOUNT_AUTO_SIGNUP = True
-SOCIALACCOUNT_ADAPTER = 'allauth.socialaccount.adapter.DefaultSocialAccountAdapter'
-
-# Social Account Providers (Google OAuth)
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'SCOPE': [
-            'profile',
-            'email',
-        ],
-        'AUTH_PARAMS': {
-            'access_type': 'online',
-        },
-        'FIELDS': [
-            'id',
-            'email',
-            'name',
-            'picture',
-        ],
-        'VERSION': 'v2',
-        'APP': {
-            'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
-            'secret': os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', ''),
-            'key': ''
-        }
-    }
-}
-
-# dj-rest-auth Configuration
-REST_AUTH = {
-    'USE_JWT': True,
-    'JWT_AUTH_COOKIE': 'jwt-auth',
-    'JWT_AUTH_REFRESH_COOKIE': 'jwt-refresh',
-    'OLD_PASSWORD_FIELD_NAME': 'old_password'
-}
-
-# Allauth Settings
-AUTHENTICATION_BACKENDS = (
-    'allauth.account.auth_backends.AuthenticationBackend',
-    'django.contrib.auth.backends.ModelBackend',
-)
-
-STATIC_URL = '/static/'
-STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+    STATIC_URL = '/static/'
+    STATICFILES_DIRS = [BASE_DIR / 'static']
+    STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise Configuration for serving static files in production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# AI/ML Configuration - OpenRouter API
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY', None)

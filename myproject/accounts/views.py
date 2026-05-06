@@ -8,24 +8,17 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from django.conf import settings
 import json
 import logging
-import os
-
-# Google OAuth imports
-try:
-    from google.auth.transport import requests as google_requests
-    from google.oauth2 import id_token
-except ImportError:
-    google_requests = None
-    id_token = None
-
-from .models import User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile
+from .models import (
+    User, Document, SellerProfile, AgentProfile, LawyerProfile, BuyerProfile,
+    PropertyDocumentTemplate, SellerDocumentSubmission
+)
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     UserUpdateSerializer,
+    UserDetailSerializer,
     AdminUserManagementSerializer,
     EmailVerificationSerializer,
     DocumentSerializer,
@@ -35,8 +28,11 @@ from .serializers import (
     AgentProfileSerializer,
     LawyerProfileSerializer,
     BuyerProfileSerializer,
-    GoogleAuthSerializer
+    PropertyDocumentTemplateSerializer,
+    SellerDocumentSubmissionListSerializer,
+    SellerDocumentSubmissionDetailSerializer
 )
+from .pdf_analyzer import pdf_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +41,21 @@ class IsAdmin(IsAdminUser):
     """Custom permission to check if user is admin role"""
     def has_permission(self, request, view):
         return bool(request.user and request.user.role == User.Role.ADMIN)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def current_user(request):
+    """Get or update current authenticated user details"""
+    if request.method == 'GET':
+        serializer = UserDetailSerializer(request.user)
+        return Response(serializer.data)
+    elif request.method == 'PATCH':
+        serializer = UserDetailSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RegisterView(CreateAPIView):
@@ -109,6 +120,16 @@ class LoginView(CreateAPIView):
 
 class UserUpdateView(RetrieveUpdateAPIView):
     serializer_class = UserUpdateSerializer
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+class UserDetailView(RetrieveUpdateAPIView):
+    """Get and update user profile details"""
+    serializer_class = UserDetailSerializer
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -401,113 +422,216 @@ class DocumentExtractionView(UpdateAPIView):
             )
 
 
-class GoogleAuthView(CreateAPIView):
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def analyze_document_pdf(request, document_id):
     """
-    Handle Google OAuth authentication
-    Receives Google access token and returns JWT tokens
-    POST /api/auth/google/
+    Analyze a PDF document using AI (extract text, detect type, extract structured data)
+    POST /api/documents/{document_id}/analyze/
     """
-    serializer_class = GoogleAuthSerializer
-    permission_classes = []
-    authentication_classes = []
-    
-    def create(self, request, *args, **kwargs):
-        try:
-            # Check if Google auth packages are available
-            if not google_requests or not id_token:
-                logger.error("Google auth packages not installed (google.auth, google.oauth2)")
-                return Response(
-                    {'error': 'Google authentication is not properly configured on the server'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            google_token = serializer.validated_data['access_token']
-            
-            # Get the client ID from environment variable or settings
-            client_id = os.environ.get('GOOGLE_OAUTH_CLIENT_ID')
-            
-            if not client_id:
-                logger.error("GOOGLE_OAUTH_CLIENT_ID not configured in environment")
-                return Response(
-                    {'error': 'Google OAuth client ID not configured on server'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-            
-            # Verify the token
-            try:
-                idinfo = id_token.verify_oauth2_token(google_token, google_requests.Request(), client_id)
-                
-                # Token is valid, extract user info
-                email = idinfo.get('email')
-                first_name = idinfo.get('given_name', '')
-                last_name = idinfo.get('family_name', '')
-                picture_url = idinfo.get('picture', '')
-                
-                if not email:
-                    return Response(
-                        {'error': 'Email not provided in Google token'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                
-                # Get or create user
-                try:
-                    user, created = User.objects.get_or_create(
-                        email=email.lower(),
-                        defaults={
-                            'username': email.lower(),  # Use full email as username to ensure uniqueness
-                            'first_name': first_name,
-                            'last_name': last_name,
-                            'is_active': True,
-                            'role': User.Role.SELLER  # Default role
-                        }
-                    )
-                    logger.info(f"User {'created' if created else 'retrieved'}: {email}")
-                except Exception as db_error:
-                    # Database error - log with full traceback
-                    logger.error(f"Database error creating user for {email}: {str(db_error)}", exc_info=True)
-                    return Response(
-                        {'error': 'An error occurred while creating your account. Please try again later.'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-                
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-                
-                return Response({
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                    'user': {
-                        'id': user.id,
-                        'username': user.username,
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'role': user.role
-                    },
-                    'is_new': created
-                }, status=status.HTTP_200_OK)
-                
-            except ValueError as e:
-                # Invalid token
-                logger.error(f"Invalid Google token: {str(e)}")
-                return Response(
-                    {'error': 'Invalid or expired Google token. Please try logging in again.'},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-            except Exception as token_error:
-                logger.error(f"Token verification error: {str(token_error)}")
-                return Response(
-                    {'error': 'Failed to verify Google token. Please try again.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
-        except Exception as e:
-            logger.error(f"Google auth error: {str(e)}", exc_info=True)
-            # Don't expose internal error details to user
+    try:
+        document = Document.objects.get(id=document_id, user=request.user)
+        
+        # Check if document is PDF
+        if not document.file.name.lower().endswith('.pdf'):
             return Response(
-                {'error': 'An error occurred during authentication. Please try again.'},
+                {'error': 'Only PDF documents can be analyzed'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Get file path
+        file_path = document.file.path
+        
+        # Get analysis type from request
+        analysis_type = request.data.get('analysis_type', 'full')
+        
+        result = {}
+        
+        if analysis_type in ['extract', 'full']:
+            # Extract text from PDF
+            result['text_extraction'] = pdf_analyzer.extract_text_from_pdf(file_path)
+        
+        if analysis_type in ['detect', 'full']:
+            # Detect document type
+            type_analysis = pdf_analyzer.detect_document_type(file_path)
+            result['document_type_analysis'] = type_analysis
+        
+        if analysis_type == 'structured':
+            # Extract specific fields
+            fields = request.data.get('fields', ['invoice_number', 'date', 'amount'])
+            result['structured_data'] = pdf_analyzer.extract_structured_data(file_path, fields)
+        
+        # Store results in document
+        document.analysis_result = result
+        document.save()
+        
+        return Response({
+            'document_id': document.id,
+            'analysis_type': analysis_type,
+            'result': result,
+            'status': 'completed'
+        }, status=status.HTTP_200_OK)
+        
+    except Document.DoesNotExist:
+        return Response(
+            {'error': 'Document not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"PDF analysis failed: {str(e)}")
+        return Response(
+            {'error': f'Analysis failed: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# Property Document Templates Views
+
+class PropertyDocumentTemplateListView(ListAPIView):
+    """Get all property document templates required for house sale"""
+    queryset = PropertyDocumentTemplate.objects.all()
+    serializer_class = PropertyDocumentTemplateSerializer
+    permission_classes = []
+    authentication_classes = []
+
+
+# Seller Document Submission Views
+
+class SellerDocumentSubmissionListView(ListAPIView):
+    """Get all document submissions for the current seller"""
+    serializer_class = SellerDocumentSubmissionListSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Only return submissions for the current user (if seller)
+        if self.request.user.role != User.Role.SELLER:
+            return SellerDocumentSubmission.objects.none()
+        return SellerDocumentSubmission.objects.filter(seller=self.request.user)
+
+
+class SellerDocumentSubmissionDetailView(RetrieveUpdateAPIView):
+    """Get or update a specific document submission"""
+    serializer_class = SellerDocumentSubmissionDetailSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        # Only return submissions for the current user
+        return SellerDocumentSubmission.objects.filter(seller=self.request.user)
+    
+    def get_object(self):
+        obj = super().get_object()
+        if obj.seller != self.request.user:
+            raise PermissionDenied("You can only access your own submissions")
+        return obj
+    
+    def perform_update(self, serializer):
+        """When file is uploaded, extract data and check for missing fields"""
+        submission = serializer.save()
+        
+        if submission.file:
+            try:
+                # Analyze the uploaded PDF
+                file_path = submission.file.path
+                
+                # Extract structured data for required fields
+                fields = submission.template.required_fields or []
+                if fields:
+                    analysis = pdf_analyzer.extract_structured_data(file_path, fields)
+                    submission.extracted_data = analysis.get('result', {}).get('structured_data', {})
+                else:
+                    # Extract all text if no specific fields defined
+                    text = pdf_analyzer.extract_text_from_pdf(file_path)
+                    submission.extracted_data = {'full_text': text}
+                
+                # Check for missing fields
+                missing = []
+                extracted_data = submission.extracted_data.get('structured_data', {}) if 'structured_data' in str(submission.extracted_data) else submission.extracted_data
+                
+                for field in fields:
+                    if field not in extracted_data or not extracted_data[field]:
+                        missing.append(field)
+                
+                submission.missing_fields = missing
+                submission.status = SellerDocumentSubmission.SubmissionStatus.PENDING_REVIEW
+                submission.submitted_at = timezone.now()
+                submission.save()
+                
+            except Exception as e:
+                logger.error(f"Error analyzing document: {str(e)}")
+                submission.extracted_data = {'error': str(e)}
+                submission.save()
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def seller_documents_dashboard(request):
+    """Get seller's document submission dashboard with summary"""
+    if request.user.role != User.Role.SELLER:
+        return Response(
+            {'error': 'Only sellers can access this endpoint'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    submissions = SellerDocumentSubmission.objects.filter(seller=request.user)
+    
+    summary = {
+        'total_documents': submissions.count(),
+        'submitted': submissions.filter(status__in=[
+            SellerDocumentSubmission.SubmissionStatus.PENDING_REVIEW,
+            SellerDocumentSubmission.SubmissionStatus.APPROVED,
+            SellerDocumentSubmission.SubmissionStatus.REJECTED,
+            SellerDocumentSubmission.SubmissionStatus.NEEDS_REVISION
+        ]).count(),
+        'approved': submissions.filter(status=SellerDocumentSubmission.SubmissionStatus.APPROVED).count(),
+        'pending_review': submissions.filter(status=SellerDocumentSubmission.SubmissionStatus.PENDING_REVIEW).count(),
+        'rejected': submissions.filter(status=SellerDocumentSubmission.SubmissionStatus.REJECTED).count(),
+        'needs_revision': submissions.filter(status=SellerDocumentSubmission.SubmissionStatus.NEEDS_REVISION).count(),
+        'not_submitted': submissions.filter(status=SellerDocumentSubmission.SubmissionStatus.NOT_SUBMITTED).count(),
+        'submissions': SellerDocumentSubmissionListSerializer(submissions, many=True).data
+    }
+    
+    return Response(summary, status=status.HTTP_200_OK)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def admin_review_document(request, submission_id):
+    """Admin endpoint to review and approve/reject document submissions"""
+    try:
+        submission = SellerDocumentSubmission.objects.get(id=submission_id)
+        
+        action = request.data.get('action')  # 'approve', 'reject', 'needs_revision'
+        notes = request.data.get('notes', '')
+        
+        if action == 'approve':
+            submission.status = SellerDocumentSubmission.SubmissionStatus.APPROVED
+        elif action == 'reject':
+            submission.status = SellerDocumentSubmission.SubmissionStatus.REJECTED
+        elif action == 'needs_revision':
+            submission.status = SellerDocumentSubmission.SubmissionStatus.NEEDS_REVISION
+        else:
+            return Response(
+                {'error': 'Invalid action. Use: approve, reject, or needs_revision'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        submission.reviewer_notes = notes
+        submission.reviewer = request.user
+        submission.reviewed_at = timezone.now()
+        submission.save()
+        
+        serializer = SellerDocumentSubmissionDetailSerializer(submission)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except SellerDocumentSubmission.DoesNotExist:
+        return Response(
+            {'error': 'Submission not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error reviewing document: {str(e)}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
