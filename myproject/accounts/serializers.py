@@ -424,4 +424,152 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
         """Count of approved documents"""
         return obj.document_submissions.filter(
             status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()# New serializers for folder-based workflow
+
+
+class PropertyFolderListSerializer(serializers.ModelSerializer):
+    """Serializer for property folders listing (for process/workflow UI)"""
+    seller_username = serializers.CharField(source='seller.username', read_only=True)
+    total_documents = serializers.SerializerMethodField()
+    approved_documents = serializers.SerializerMethodField()
+    pending_documents = serializers.SerializerMethodField()
+    rejected_documents = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'seller',
+            'seller_username',
+            'title',
+            'address',
+            'description',
+            'price',
+            'total_documents',
+            'approved_documents',
+            'pending_documents',
+            'rejected_documents',
+            'progress_percentage',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'seller', 'seller_username', 'created_at', 'updated_at']
+    
+    def get_total_documents(self, obj):
+        """Total document submissions"""
+        return obj.document_submissions.count()
+    
+    def get_approved_documents(self, obj):
+        """Count of approved documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
         ).count()
+    
+    def get_pending_documents(self, obj):
+        """Count of pending documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.PENDING_REVIEW
+        ).count()
+    
+    def get_rejected_documents(self, obj):
+        """Count of rejected documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.REJECTED
+        ).count()
+    
+    def get_progress_percentage(self, obj):
+        """Calculate progress percentage (approved / total required documents)"""
+        total_required = PropertyDocumentTemplate.objects.filter(required=True).count()
+        if total_required == 0:
+            return 0
+        approved = obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()
+        return int((approved / total_required) * 100)
+
+
+class PropertyFolderDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for property folder with grouped documents"""
+    seller_username = serializers.CharField(source='seller.username', read_only=True)
+    documents_by_category = serializers.SerializerMethodField()
+    total_documents = serializers.SerializerMethodField()
+    approved_documents = serializers.SerializerMethodField()
+    pending_documents = serializers.SerializerMethodField()
+    progress_percentage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Property
+        fields = [
+            'id',
+            'seller',
+            'seller_username',
+            'title',
+            'address',
+            'description',
+            'price',
+            'documents_by_category',
+            'total_documents',
+            'approved_documents',
+            'pending_documents',
+            'progress_percentage',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'seller', 'seller_username', 'created_at', 'updated_at']
+    
+    def get_documents_by_category(self, obj):
+        """Group document submissions by template category"""
+        submissions = obj.document_submissions.select_related('template').all()
+        
+        categories = {}
+        for submission in submissions:
+            category = submission.template.category
+            
+            if category not in categories:
+                categories[category] = {
+                    'name': category,
+                    'documents': []
+                }
+            
+            categories[category]['documents'].append({
+                'id': submission.id,
+                'template_id': submission.template.id,
+                'template_name': submission.template.name,
+                'template_description': submission.template.description,
+                'status': submission.status,
+                'extracted_data': submission.extracted_data,
+                'missing_fields': submission.missing_fields,
+                'reviewer_notes': submission.reviewer_notes,
+                'submitted_at': submission.submitted_at,
+                'reviewed_at': submission.reviewed_at,
+                'file': submission.file.url if submission.file else None
+            })
+        
+        return list(categories.values())
+    
+    def get_total_documents(self, obj):
+        """Total document submissions"""
+        return obj.document_submissions.count()
+    
+    def get_approved_documents(self, obj):
+        """Count of approved documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()
+    
+    def get_pending_documents(self, obj):
+        """Count of pending documents"""
+        return obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.PENDING_REVIEW
+        ).count()
+    
+    def get_progress_percentage(self, obj):
+        """Calculate progress percentage (approved / total required documents)"""
+        total_required = PropertyDocumentTemplate.objects.filter(required=True).count()
+        if total_required == 0:
+            return 0
+        approved = obj.document_submissions.filter(
+            status=SellerDocumentSubmission.SubmissionStatus.APPROVED
+        ).count()
+        return int((approved / total_required) * 100)

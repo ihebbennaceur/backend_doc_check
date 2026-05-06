@@ -21,6 +21,8 @@ from .views import (
     buyer_profile,
     PropertyListView,
     PropertyDetailView,
+    PropertyFolderListView,
+    PropertyFolderDetailView,
     PropertyDocumentTemplateListView,
     AdminPropertyDocumentsListView,
     SellerDocumentSubmissionListView,
@@ -62,6 +64,10 @@ urlpatterns = [
     # Property management (seller)
     path("properties/", PropertyListView.as_view(), name="properties_list"),
     path("properties/<int:id>/", PropertyDetailView.as_view(), name="property_detail"),
+    
+    # Folder-based workflow (new process UI)
+    path("folders/", PropertyFolderListView.as_view(), name="property_folders_list"),
+    path("folders/<int:id>/", PropertyFolderDetailView.as_view(), name="property_folder_detail"),
     
     # Admin endpoints
     path("admin/users/", AdminUserListView.as_view(), name="admin_users_list"),

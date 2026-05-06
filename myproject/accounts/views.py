@@ -1,4 +1,4 @@
-from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, ListAPIView, UpdateAPIView, DestroyAPIView
+from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, ListAPIView, ListCreateAPIView, UpdateAPIView, DestroyAPIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status, viewsets
@@ -32,7 +32,9 @@ from .serializers import (
     PropertyDetailSerializer,
     PropertyDocumentTemplateSerializer,
     SellerDocumentSubmissionListSerializer,
-    SellerDocumentSubmissionDetailSerializer
+    SellerDocumentSubmissionDetailSerializer,
+    PropertyFolderListSerializer,
+    PropertyFolderDetailSerializer
 )
 from .pdf_analyzer import pdf_analyzer
 
@@ -659,7 +661,7 @@ def admin_review_document(request, submission_id):
 ########################################################################
 # PROPERTY MANAGEMENT VIEWS
 
-class PropertyListView(ListAPIView):
+class PropertyListView(ListCreateAPIView):
     """List seller's properties and create new property"""
     serializer_class = PropertySerializer
     permission_classes = [IsAuthenticated]
@@ -670,20 +672,11 @@ class PropertyListView(ListAPIView):
             return Property.objects.none()
         return Property.objects.filter(seller=self.request.user)
     
-    def post(self, request, *args, **kwargs):
-        """Create new property for seller"""
-        if request.user.role != User.Role.SELLER:
+    def perform_create(self, serializer):
+        """Create new property with current user as seller"""
+        if self.request.user.role != User.Role.SELLER:
             raise PermissionDenied("Only sellers can create properties")
-        
-        # Add seller to request data
-        data = request.data.copy()
-        data['seller'] = request.user.id
-        
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(seller=request.user)
-        
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        serializer.save(seller=self.request.user)
 
 
 class PropertyDetailView(RetrieveUpdateAPIView):
@@ -723,6 +716,77 @@ class PropertyDetailView(RetrieveUpdateAPIView):
     
     def patch(self, request, *args, **kwargs):
         """Partial update property"""
+        property_obj = self.get_object()
+        
+        if property_obj.seller != request.user and request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("You can only update your own properties")
+        
+        serializer = self.get_serializer(property_obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ============================================================================
+# Process/Folder-based Workflow Views
+# ============================================================================
+
+class PropertyFolderListView(ListCreateAPIView):
+    """List all property folders (requests/cases) for seller with document summaries"""
+    serializer_class = PropertyFolderListSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """Only show properties for authenticated seller"""
+        if self.request.user.role != User.Role.SELLER:
+            return Property.objects.none()
+        return Property.objects.filter(seller=self.request.user).prefetch_related('document_submissions')
+    
+    def perform_create(self, serializer):
+        """Create new property (folder) with current user as seller"""
+        if self.request.user.role != User.Role.SELLER:
+            raise PermissionDenied("Only sellers can create properties")
+        serializer.save(seller=self.request.user)
+
+
+class PropertyFolderDetailView(RetrieveUpdateAPIView):
+    """Get property folder details with documents grouped by category"""
+    serializer_class = PropertyFolderDetailSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+    
+    def get_queryset(self):
+        """Only show property if user is the seller"""
+        user = self.request.user
+        if user.role == User.Role.SELLER:
+            return Property.objects.filter(seller=user).prefetch_related('document_submissions__template')
+        elif user.role == User.Role.ADMIN:
+            return Property.objects.all().prefetch_related('document_submissions__template')
+        return Property.objects.none()
+    
+    def get_object(self):
+        """Get property by id"""
+        queryset = self.get_queryset()
+        obj = get_object_or_404(queryset, id=self.kwargs['id'])
+        self.check_object_permissions(self.request, obj)
+        return obj
+    
+    def put(self, request, *args, **kwargs):
+        """Update property folder"""
+        property_obj = self.get_object()
+        
+        if property_obj.seller != request.user and request.user.role != User.Role.ADMIN:
+            raise PermissionDenied("You can only update your own properties")
+        
+        serializer = self.get_serializer(property_obj, data=request.data, partial=False)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def patch(self, request, *args, **kwargs):
+        """Partial update property folder"""
         property_obj = self.get_object()
         
         if property_obj.seller != request.user and request.user.role != User.Role.ADMIN:
