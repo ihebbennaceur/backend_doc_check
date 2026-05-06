@@ -495,6 +495,23 @@ class PropertyDocumentTemplateListView(ListAPIView):
     authentication_classes = []
 
 
+class AdminPropertyDocumentsListView(ListAPIView):
+    """Admin endpoint to list all property document submissions for review"""
+    serializer_class = SellerDocumentSubmissionDetailSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get_queryset(self):
+        # Get filter from query params
+        status = self.request.query_params.get('status', None)
+        
+        queryset = SellerDocumentSubmission.objects.all()
+        
+        if status:
+            queryset = queryset.filter(status=status)
+        
+        return queryset.order_by('-submitted_at')
+
+
 # Seller Document Submission Views
 
 class SellerDocumentSubmissionListView(ListAPIView):

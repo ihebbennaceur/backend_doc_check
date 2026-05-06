@@ -20,6 +20,7 @@ from .views import (
     lawyer_profile,
     buyer_profile,
     PropertyDocumentTemplateListView,
+    AdminPropertyDocumentsListView,
     SellerDocumentSubmissionListView,
     SellerDocumentSubmissionDetailView,
     seller_documents_dashboard,
@@ -61,5 +62,6 @@ urlpatterns = [
     path("admin/users/<int:user_id>/", AdminUserManagementView.as_view(), name="admin_user_detail"),
     path("admin/documents/", AdminDocumentListView.as_view(), name="admin_documents_list"),
     path("admin/documents/<int:document_id>/", AdminDocumentApprovalView.as_view(), name="admin_document_approval"),
+    path("admin/property-documents/", AdminPropertyDocumentsListView.as_view(), name="admin_property_documents_list"),
     path("admin/property-documents/<int:submission_id>/review/", admin_review_document, name="admin_review_property_document"),
 ]
